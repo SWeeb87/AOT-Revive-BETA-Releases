@@ -17,10 +17,10 @@ jobs:
           DESTINATION_PAT: ${{ secrets.DESTINATION_PAT }}
         run: |
           # Variabili
-          SOURCE_OWNER="tuo-utente-o-organizzazione-sorgente"
-          SOURCE_REPO="nome-repo-sorgente"
-          DEST_OWNER="utente-o-organizzazione-destinazione"
-          DEST_REPO="nome-repo-destinazione"
+          SOURCE_OWNER="SWeeb87"
+          SOURCE_REPO="AOT-Revive-BETA-Releases"
+          DEST_OWNER="SWeeb87"
+          DEST_REPO="AOT-Revive-Cadet-Beta"
           
           RELEASE_TAG=$(jq -r '.release.tag_name' < "${GITHUB_EVENT_PATH}")
           RELEASE_BODY=$(jq -r '.release.body' < "${GITHUB_EVENT_PATH}")
