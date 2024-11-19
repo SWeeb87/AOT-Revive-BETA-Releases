@@ -1,17 +1,18 @@
-name: Sync Release to Another Repo
+name: Sync Latest Release to Another Repo
 
 on:
   release:
-    types: [published] # Monitora solo le release pubblicate
+    types: [published, edited] # Monitora sia nuove release che modifiche a release esistenti
 
 jobs:
-  copy-release:
+  sync-release:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Set up API call
+      - name: Sync latest release to destination
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DESTINATION_PAT: ${{ secrets.DESTINATION_PAT }}
@@ -22,20 +23,71 @@ jobs:
           DEST_OWNER="SWeeb87"
           DEST_REPO="AOT-Revive-Cadet-Beta"
           
+          # Ottieni dettagli della release corrente
           RELEASE_TAG=$(jq -r '.release.tag_name' < "${GITHUB_EVENT_PATH}")
-          RELEASE_BODY=$(jq -r '.release.body' < "${GITHUB_EVENT_PATH}")
           RELEASE_NAME=$(jq -r '.release.name' < "${GITHUB_EVENT_PATH}")
-
-          # Creazione della release nella repository di destinazione
-          curl -X POST \
+          RELEASE_BODY=$(jq -r '.release.body' < "${GITHUB_EVENT_PATH}")
+          
+          # Ottieni ID della release nella destinazione (se esiste)
+          RELEASE_ID=$(curl -s \
             -H "Authorization: Bearer $DESTINATION_PAT" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "tag_name": "'"$RELEASE_TAG"'",
-              "target_commitish": "main",
-              "name": "'"$RELEASE_NAME"'",
-              "body": "'"$RELEASE_BODY"'",
-              "draft": false,
-              "prerelease": false
-            }' \
-            "https://api.github.com/repos/$DEST_OWNER/$DEST_REPO/releases"
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/$DEST_OWNER/$DEST_REPO/releases" \
+            | jq -r --arg tag "$RELEASE_TAG" '.[] | select(.tag_name == $tag) | .id')
+
+          if [ -z "$RELEASE_ID" ]; then
+            echo "La release non esiste nella destinazione. Creazione..."
+            RELEASE_ID=$(curl -s \
+              -X POST \
+              -H "Authorization: Bearer $DESTINATION_PAT" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "tag_name": "'"$RELEASE_TAG"'",
+                "target_commitish": "main",
+                "name": "'"$RELEASE_NAME"'",
+                "body": "'"$RELEASE_BODY"'",
+                "draft": false,
+                "prerelease": false
+              }' \
+              "https://api.github.com/repos/$DEST_OWNER/$DEST_REPO/releases" | jq -r '.id')
+          else
+            echo "La release esiste nella destinazione. Aggiornamento..."
+            curl -s \
+              -X PATCH \
+              -H "Authorization: Bearer $DESTINATION_PAT" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "name": "'"$RELEASE_NAME"'",
+                "body": "'"$RELEASE_BODY"'"
+              }' \
+              "https://api.github.com/repos/$DEST_OWNER/$DEST_REPO/releases/$RELEASE_ID"
+          fi
+
+          # Aggiungi o aggiorna asset nella release della destinazione
+          for FILE in $(jq -r '.release.assets[].browser_download_url' < "${GITHUB_EVENT_PATH}"); do
+            echo "Sincronizzo il file: $FILE"
+            ASSET_NAME=$(basename "$FILE")
+            
+            # Elimina il file nella destinazione se esiste
+            ASSET_ID=$(curl -s \
+              -H "Authorization: Bearer $DESTINATION_PAT" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "https://api.github.com/repos/$DEST_OWNER/$DEST_REPO/releases/$RELEASE_ID/assets" \
+              | jq -r --arg name "$ASSET_NAME" '.[] | select(.name == $name) | .id')
+
+            if [ -n "$ASSET_ID" ]; then
+              echo "Elimino asset esistente: $ASSET_NAME"
+              curl -s -X DELETE \
+                -H "Authorization: Bearer $DESTINATION_PAT" \
+                "https://api.github.com/repos/$DEST_OWNER/$DEST_REPO/releases/assets/$ASSET_ID"
+            fi
+
+            # Carica il nuovo asset
+            echo "Carico asset aggiornato: $ASSET_NAME"
+            curl -s \
+              -X POST \
+              -H "Authorization: Bearer $DESTINATION_PAT" \
+              -H "Content-Type: application/octet-stream" \
+              --data-binary @"$FILE" \
+              "https://uploads.github.com/repos/$DEST_OWNER/$DEST_REPO/releases/$RELEASE_ID/assets?name=$ASSET_NAME"
+          done
