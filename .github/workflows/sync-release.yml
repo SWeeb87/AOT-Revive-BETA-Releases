@@ -1,0 +1,41 @@
+name: Sync Release to Another Repo
+
+on:
+  release:
+    types: [published] # Monitora solo le release pubblicate
+
+jobs:
+  copy-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up API call
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DESTINATION_PAT: ${{ secrets.DESTINATION_PAT }}
+        run: |
+          # Variabili
+          SOURCE_OWNER="tuo-utente-o-organizzazione-sorgente"
+          SOURCE_REPO="nome-repo-sorgente"
+          DEST_OWNER="utente-o-organizzazione-destinazione"
+          DEST_REPO="nome-repo-destinazione"
+          
+          RELEASE_TAG=$(jq -r '.release.tag_name' < "${GITHUB_EVENT_PATH}")
+          RELEASE_BODY=$(jq -r '.release.body' < "${GITHUB_EVENT_PATH}")
+          RELEASE_NAME=$(jq -r '.release.name' < "${GITHUB_EVENT_PATH}")
+
+          # Creazione della release nella repository di destinazione
+          curl -X POST \
+            -H "Authorization: Bearer $DESTINATION_PAT" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "tag_name": "'"$RELEASE_TAG"'",
+              "target_commitish": "main",
+              "name": "'"$RELEASE_NAME"'",
+              "body": "'"$RELEASE_BODY"'",
+              "draft": false,
+              "prerelease": false
+            }' \
+            "https://api.github.com/repos/$DEST_OWNER/$DEST_REPO/releases"
