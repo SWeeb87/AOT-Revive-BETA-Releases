@@ -3,7 +3,7 @@ name: Sync Latest Release to Another Repo
 on:
   release:
     types: [published, edited] # Triggera il workflow su nuove release o modifiche a release esistenti
-  workflow_dispatch: # Aggiunge la possibilità di eseguire manualmente il workflow
+  workflow_dispatch: # Permette di avviare manualmente il workflow
 
 jobs:
   sync-release:
@@ -13,22 +13,40 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Sync latest release to destination
+      - name: Fetch release details from source
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DESTINATION_PAT: ${{ secrets.DESTINATION_PAT }}
         run: |
           # Variabili
           SOURCE_OWNER="SWeeb87"
           SOURCE_REPO="AOT-Revive-BETA-Releases"
+
+          # Ottieni i dettagli dell'ultima release pubblicata
+          RELEASE_DATA=$(curl -s \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/$SOURCE_OWNER/$SOURCE_REPO/releases/latest")
+
+          # Estrai i dati richiesti
+          export RELEASE_TAG=$(echo "$RELEASE_DATA" | jq -r '.tag_name')
+          export RELEASE_NAME=$(echo "$RELEASE_DATA" | jq -r '.name')
+          export RELEASE_BODY=$(echo "$RELEASE_DATA" | jq -r '.body')
+
+          # Salva gli URL degli asset in un file temporaneo
+          echo "$RELEASE_DATA" | jq -r '.assets[].browser_download_url' > asset_urls.txt
+
+          echo "Tag della release: $RELEASE_TAG"
+          echo "Nome della release: $RELEASE_NAME"
+          echo "Corpo della release: $RELEASE_BODY"
+
+      - name: Sync latest release to destination
+        env:
+          DESTINATION_PAT: ${{ secrets.DESTINATION_PAT }}
+        run: |
+          # Variabili
           DEST_OWNER="SWeeb87"
           DEST_REPO="AOT-Revive-Cadet-Beta"
-          
-          # Ottieni dettagli della release corrente
-          RELEASE_TAG=$(jq -r '.release.tag_name' < "${GITHUB_EVENT_PATH}")
-          RELEASE_NAME=$(jq -r '.release.name' < "${GITHUB_EVENT_PATH}")
-          RELEASE_BODY=$(jq -r '.release.body' < "${GITHUB_EVENT_PATH}")
-          
+
           # Ottieni ID della release nella destinazione (se esiste)
           RELEASE_ID=$(curl -s \
             -H "Authorization: Bearer $DESTINATION_PAT" \
@@ -65,11 +83,10 @@ jobs:
           fi
 
           # Aggiungi o aggiorna asset nella release della destinazione
-          for FILE in $(jq -r '.release.assets[].browser_download_url' < "${GITHUB_EVENT_PATH}"); do
-            echo "Sincronizzo il file: $FILE"
-            ASSET_NAME=$(basename "$FILE")
+          while read -r FILE_URL; do
+            ASSET_NAME=$(basename "$FILE_URL")
             
-            # Elimina il file nella destinazione se esiste
+            # Elimina l'asset nella destinazione se esiste
             ASSET_ID=$(curl -s \
               -H "Authorization: Bearer $DESTINATION_PAT" \
               -H "Accept: application/vnd.github.v3+json" \
@@ -83,12 +100,13 @@ jobs:
                 "https://api.github.com/repos/$DEST_OWNER/$DEST_REPO/releases/assets/$ASSET_ID"
             fi
 
-            # Carica il nuovo asset
-            echo "Carico asset aggiornato: $ASSET_NAME"
+            # Scarica il file dalla sorgente e caricalo nella destinazione
+            echo "Scarico e carico asset: $ASSET_NAME"
+            curl -sL "$FILE_URL" -o "$ASSET_NAME"
             curl -s \
               -X POST \
               -H "Authorization: Bearer $DESTINATION_PAT" \
               -H "Content-Type: application/octet-stream" \
-              --data-binary @"$FILE" \
+              --data-binary @"$ASSET_NAME" \
               "https://uploads.github.com/repos/$DEST_OWNER/$DEST_REPO/releases/$RELEASE_ID/assets?name=$ASSET_NAME"
-          done
+          done < asset_urls.txt
