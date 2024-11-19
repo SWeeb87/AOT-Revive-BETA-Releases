@@ -27,6 +27,9 @@ jobs:
             -H "Accept: application/vnd.github.v3+json" \
             "https://api.github.com/repos/$SOURCE_OWNER/$SOURCE_REPO/releases/latest")
 
+          # Debug: Stampiamo la risposta della API per vedere cosa contiene
+          echo "Release Data: $RELEASE_DATA"
+
           # Estrai i dati richiesti
           export RELEASE_TAG=$(echo "$RELEASE_DATA" | jq -r '.tag_name')
           export RELEASE_NAME=$(echo "$RELEASE_DATA" | jq -r '.name')
@@ -54,9 +57,12 @@ jobs:
             "https://api.github.com/repos/$DEST_OWNER/$DEST_REPO/releases" \
             | jq -r --arg tag "$RELEASE_TAG" '.[] | select(.tag_name == $tag) | .id')
 
+          # Aggiungi un controllo se la release esiste già
           if [ -z "$RELEASE_ID" ]; then
             echo "La release non esiste nella destinazione. Creazione..."
-            RELEASE_ID=$(curl -s \
+            
+            # Debug: Stampiamo la risposta per la creazione della release
+            NEW_RELEASE_DATA=$(curl -s \
               -X POST \
               -H "Authorization: Bearer $DESTINATION_PAT" \
               -H "Content-Type: application/json" \
@@ -68,7 +74,12 @@ jobs:
                 "draft": false,
                 "prerelease": false
               }' \
-              "https://api.github.com/repos/$DEST_OWNER/$DEST_REPO/releases" | jq -r '.id')
+              "https://api.github.com/repos/$DEST_OWNER/$DEST_REPO/releases")
+
+            echo "New Release Response: $NEW_RELEASE_DATA" # Aggiungi il debug
+
+            # Estrai l'ID della nuova release
+            RELEASE_ID=$(echo "$NEW_RELEASE_DATA" | jq -r '.id')
           else
             echo "La release esiste nella destinazione. Aggiornamento..."
             curl -s \
