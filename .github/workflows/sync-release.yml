@@ -1,7 +1,9 @@
 name: Sync Latest Release to Another Repo
 
 on:
-  workflow_dispatch: # Aggiunge il pulsante manuale per eseguire il workflow
+  release:
+    types: [published, edited] # Triggera il workflow su nuove release o modifiche a release esistenti
+  workflow_dispatch: # Aggiunge la possibilità di eseguire manualmente il workflow
 
 jobs:
   sync-release:
@@ -16,11 +18,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DESTINATION_PAT: ${{ secrets.DESTINATION_PAT }}
         run: |
-          # Lo script rimane invariato
-          SOURCE_OWNER="tuo-utente-o-organizzazione-sorgente"
-          SOURCE_REPO="nome-repo-sorgente"
-          DEST_OWNER="utente-o-organizzazione-destinazione"
-          DEST_REPO="nome-repo-destinazione"
+          # Variabili
+          SOURCE_OWNER="SWeeb87"
+          SOURCE_REPO="AOT-Revive-BETA-Releases"
+          DEST_OWNER="SWeeb87"
+          DEST_REPO="AOT-Revive-Cadet-Beta"
           
           # Ottieni dettagli della release corrente
           RELEASE_TAG=$(jq -r '.release.tag_name' < "${GITHUB_EVENT_PATH}")
