@@ -1,4 +1,4 @@
-#READ BEFORE DOWNLOADING#
+# READ BEFORE DOWNLOADING
 
 ### As of writing this, 4th of october 2025, a new vulnerability in the Unity engine has been found, i've patched the LATEST (only the latest) version of the game, but as you can understand, i can't patch all of the betas. so, if you decide to download a beta, BE AWARE that there is a security vulnerability, to know more about it, refer to the link here below.
 
